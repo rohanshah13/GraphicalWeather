@@ -1,0 +1,8 @@
+# NN config file
+datadir: /home/scratch/rohans2/pgm/data/
+save_dir: /home/scratch/rohans2/pgm/outputs/
+vars: [z, t]
+filters: [64, 64, 64, 64, 2]
+kernels: [5, 5, 5, 5, 5]
+lead_time: 120
+num_epochs: 100
