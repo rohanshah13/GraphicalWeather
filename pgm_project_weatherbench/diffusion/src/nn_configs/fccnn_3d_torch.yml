@@ -1,8 +1,0 @@
-# NN config file
-datadir: /home/scratch/vdas/weatherbench/data/
-save_dir: /home/scratch/vdas/weatherbench/outputs_6/
-vars: [z, t]
-filters: [64, 64, 64, 64, 2]
-kernels: [5, 5, 5, 5, 5]
-lead_time: 6
-num_epochs: 50
