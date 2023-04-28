@@ -2,6 +2,9 @@ data/
 WeatherBench/pgm/
 WeatherBench/pgm_torch
 WeatherBench/pgm37/
+WeatherBench/data/
+WeatherBench/runs/
 graph_weather/.git
 graph_weather/.github
 WeatherBench/baselines/cnn_3d.nc
+*pycache*
