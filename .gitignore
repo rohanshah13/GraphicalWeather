@@ -6,5 +6,6 @@ WeatherBench/data/
 WeatherBench/runs/
 graph_weather/.git
 graph_weather/.github
+graph_weather/train/runs/
 WeatherBench/baselines/
 *pycache*
