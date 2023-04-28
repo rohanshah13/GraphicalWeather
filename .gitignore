@@ -1,0 +1,7 @@
+data/
+WeatherBench/pgm/
+WeatherBench/pgm_torch
+WeatherBench/pgm37/
+graph_weather/.git
+graph_weather/.github
+WeatherBench/baselines/cnn_3d.nc
