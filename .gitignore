@@ -6,5 +6,5 @@ WeatherBench/data/
 WeatherBench/runs/
 graph_weather/.git
 graph_weather/.github
-WeatherBench/baselines/cnn_3d.nc
+WeatherBench/baselines/
 *pycache*
