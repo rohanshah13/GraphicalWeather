@@ -1,0 +1,20 @@
+batch_size: 64
+test_batch_size: 64
+epochs: 500
+lr: 3e-2
+train_start: '20090101'
+train_end: '20121231'
+test_start: '20170101'
+test_end: '20171231'
+model_dim: 32
+resolution: 1
+num_blocks: 6
+lead_time: 6
+data_dir: /home/scratch/rohans2/processed/
+ckpt_path: /home/scratch/rohans2/pgm_project/outputs/0.003_2023-04-27_23-04-44/gnn_250.pt
+# /home/scratch/rohans2/pgm_project/outputs/0.001_2023-04-27_16-54-29/gnn.pt
+current_time: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+inference: True
+hydra:
+  run:
+    dir: /home/scratch/rohans2/pgm_project/outputs/${lr}_${current_time}
