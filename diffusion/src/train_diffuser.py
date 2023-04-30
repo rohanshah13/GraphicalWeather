@@ -41,6 +41,45 @@ config = SimpleNamespace(
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S")
 
+def compute_weighted_rmse(da_fc, da_true):
+    error = da_fc - da_true
+    weights_lat = np.cos(np.deg2rad(np.linspace(-90, 90, 32))).reshape(-1, 1)
+    weights_lat /= weights_lat.mean()
+    rmse = np.sqrt(((error)**2 * weights_lat).mean())
+    return rmse
+
+def plot_images_weatherbench_generate(gt, images, idx):
+    plt.rcParams["figure.figsize"] = (60, 20)
+    fig, ax = plt.subplots(2, 3)
+    ax[0, 0].imshow(gt[0, :, :], cmap='coolwarm')
+    ax[0, 1].imshow(images[0, :, :], cmap='coolwarm')
+    ax[0, 2].imshow(np.abs(images[0, :, :] - gt[0, :, :]), cmap='coolwarm')
+    ax[1, 0].imshow(gt[1, :, :], cmap='coolwarm')
+    ax[1, 1].imshow(images[1, :, :], cmap='coolwarm')
+    ax[1, 2].imshow(np.abs(images[1, :, :] - gt[1, :, :]), cmap='coolwarm')
+    ax[0, 0].set_title('Ground Truth', fontsize=40)
+    ax[0, 1].set_title('Prediction', fontsize=40)
+    ax[0, 2].set_title('Error', fontsize=40)
+    ax[0, 0].set_ylabel(r'Z500 [$m^{2}s^{-2}$]', fontsize=40)
+    ax[1, 0].set_ylabel('T850 [K]', fontsize=40)
+    # Add colorbars to all figures
+    fig.colorbar(ax[0, 0].imshow(gt[0, :, :], cmap='coolwarm'), ax=ax[0, 0], shrink=0.79)
+    fig.colorbar(ax[0, 1].imshow(images[0, :, :], cmap='coolwarm'), ax=ax[0, 1], shrink=0.79)
+    fig.colorbar(ax[0, 2].imshow(np.abs(images[0, :, :] - gt[0, :, :]), cmap='coolwarm'), ax=ax[0, 2], shrink=0.79)
+    fig.colorbar(ax[1, 0].imshow(gt[1, :, :], cmap='coolwarm'), ax=ax[1, 0], shrink=0.79)
+    fig.colorbar(ax[1, 1].imshow(images[1, :, :], cmap='coolwarm'), ax=ax[1, 1], shrink=0.79)
+    fig.colorbar(ax[1, 2].imshow(np.abs(images[1, :, :] - gt[1, :, :]), cmap='coolwarm'), ax=ax[1, 2], shrink=0.79)
+    # Remove ticks from all figures
+    for i in range(2):
+        for j in range(3):
+            ax[i, j].set_xticks([])
+            ax[i, j].set_yticks([])
+    if not os.path.exists(f'/home/scratch/vdas/weatherbench/results/images/'):
+        os.makedirs(f'/home/scratch/vdas/weatherbench/results/images/')
+    plt.savefig(f'/home/scratch/vdas/weatherbench/results/images/{idx}.png')
+    plt.clf()
+    plt.close()
+
 
 class Diffusion:
     def __init__(self, noise_steps=1000, beta_start=1e-4, beta_end=0.02, num_classes=10, c_in=2, c_out=2,
@@ -76,7 +115,6 @@ class Diffusion:
     def sample(self, use_ema, labels, cfg_scale=3):
         model = self.ema_model if use_ema else self.model
         n = len(labels)
-        logging.info(f"Sampling {n} new images....")
         model.eval()
         with torch.inference_mode():
             x = torch.randn((n, self.c_in, 32, 64)).to(self.device)
@@ -97,8 +135,8 @@ class Diffusion:
                 x = 1 / torch.sqrt(alpha) * (
                             x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(
                     beta) * noise
-        x = (x.clamp(-1, 1) + 1) / 2
-        x = (x * 255).type(torch.uint8)
+        # x = x.clamp(-1, 1)
+        # x = (x * 255).type(torch.uint8)
         return x
 
     def train_step(self, loss):
@@ -136,21 +174,6 @@ class Diffusion:
         return avg_loss.mean().item()
 
     def log_images(self, ep, dataloader, num=None, save=False):
-        # "Log images to wandb and save them to disk"
-        # labels = []
-        # val_transforms = torchvision.transforms.Compose([
-        #     T.Resize(32, antialias=True),
-        #     T.Normalize((0.5,), (0.5,)),
-        # ])
-        # for i in range(self.num_classes):
-        #     labels.append(np.array(Image.open(
-        #         f'{config.dataset_path}/train/{i}/{np.random.choice(os.listdir(f"{config.dataset_path}/train/{i}"))}'),
-        #                            dtype=np.float32))
-        # labels = torch.tensor(np.array(labels)).to(self.device).unsqueeze(1)
-        # labels = val_transforms(labels)
-        # sampled_images = self.sample(use_ema=False, labels=labels)
-        # plot_images_f(sampled_images, ep)
-
         i = 0
         for image, context in tqdm(dataloader):
             if num is not None and i >= num:
@@ -165,6 +188,53 @@ class Diffusion:
                         os.mkdir(f"/home/scratch/vdas/weatherbench/outputs/{ep}")
                     np.save(f"/home/scratch/vdas/weatherbench/outputs/{ep}/{idx}.npy", si.cpu().numpy())
                 plot_images_weatherbench(img, si, ep, idx)
+
+    def evaluate(self, dataloader):
+        z500mses = []
+        t850mses = []
+        i = 0
+        # sample_paths = os.listdir("/home/scratch/vdas/weatherbench/outputs/6h/samples")
+        sample_paths = os.listdir("/home/scratch/vdas/weatherbench/outputs/more_samples")
+        ks = [0.001, 0.01, 0.1, 0.2, 0.3]
+        # ks = [0.001, 0.01]
+        containmentsz500 = [[] for _ in ks]
+        containmentst850 = [[] for _ in ks]
+        for context, image in tqdm(dataloader, total=len(dataloader)):
+            image = image.to(self.device)
+            context = context.to(self.device)
+            for idx, img in tqdm(enumerate(image)):
+                # sampled_images = np.array([np.load(f"/home/scratch/vdas/weatherbench/outputs/6h/samples/{s}") for s in
+                sampled_images = np.array([np.load(f"/home/scratch/vdas/weatherbench/outputs/more_samples/{s}") for s in
+                                  sample_paths if s.endswith(f"{i}.npy")])
+                if len(sampled_images) == 0:
+                    continue
+                img = img.cpu().numpy() * np.array(dataloader.dataset.std).reshape((2,1,1)) + np.array(dataloader.dataset.mean).reshape((2,1,1))
+                print(np.max(img), np.min(img))
+                # sampled_images = (sampled_images - np.array(dataloader.dataset.mean).reshape((1,2,1,1))) / np.array(dataloader.dataset.std).reshape((1,2,1,1))
+
+                sampled_images = np.mean(sampled_images, axis=0)
+                sampled_images_std = np.std(sampled_images, axis=0)
+                for k_idx, k in enumerate(ks):
+                    lower = img - k * sampled_images_std
+                    upper = img + k * sampled_images_std
+                    containmentsz500[k_idx].append(np.mean((sampled_images[0] >= lower[0]) & (sampled_images[0] <= upper[0])))
+                    containmentst850[k_idx].append(np.mean((sampled_images[1] >= lower[1]) & (sampled_images[1] <= upper[1])))
+                z500mses.append(compute_weighted_rmse(img[0], sampled_images[0]))
+                t850mses.append(compute_weighted_rmse(img[1], sampled_images[1]))
+                i += 1
+                plot_images_weatherbench_generate(img, sampled_images, i)
+        containmentsz500 = [np.mean(containment) for containment in containmentsz500]
+        containmentst850 = [np.mean(containment) for containment in containmentst850]
+        # Plot both containments with a dot at each point, and add a legend
+        plt.plot(ks, containmentsz500, label='Z500', marker='o')
+        plt.plot(ks, containmentst850, label='T850', marker='o')
+        plt.legend()
+        plt.xlabel('k')
+        plt.ylabel('Fractions of pixels within k std')
+        plt.savefig('containment.png')
+        plt.close()
+        print(f"Z500 RMSE: {np.mean(z500mses)}")
+        print(f"T850 RMSE: {np.mean(t850mses)}")
 
     def load(self, model_ckpt_path, model_ckpt="ckpt.pt", ema_model_ckpt="ema_ckpt.pt"):
         self.model.load_state_dict(torch.load(os.path.join(model_ckpt_path, model_ckpt)))
