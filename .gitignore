@@ -8,4 +8,5 @@ graph_weather/.git
 graph_weather/.github
 graph_weather/train/runs/
 WeatherBench/baselines/
+.delete
 *pycache*

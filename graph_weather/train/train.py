@@ -240,6 +240,8 @@ def create_predictions(model, dataloader, dg, device):
 			# 		outputs = model(inputs)				
 
 			inputs, labels = process_data(data, device)
+			for forecast_num in range(dg.lead_time // 6):
+				inputs = model(inputs)
 			outputs = model(inputs)
 			outputs = outputs.cpu().detach().numpy()
 			if preds is None:
@@ -275,52 +277,9 @@ def create_predictions(model, dataloader, dg, device):
 def create_predictions_analysis(model, dataloader, dg, device, valid):
 	preds = create_predictions(model, dataloader, dg, device)
 	error = preds - valid
-	error.to_netcdf('/home/scratch/rsaxena2/model_error.nc')
+	valid.to_netcdf('/home/scratch/rsaxena2/valid_48h.nc')
+	error.to_netcdf('/home/scratch/rsaxena2/model_error_48h.nc')
 	return
-	import pdb;pdb.set_trace()
-	preds = None
-	labels_acc = None
-	model.eval()
-	with torch.no_grad():
-		for i, data in tqdm(enumerate(dataloader)):		
-			inputs, labels = process_data(data, device)
-			outputs = model(inputs)
-			outputs = outputs.cpu().detach().numpy()
-			labels = labels.cpu().detach().numpy()
-			if preds is None:
-				preds = outputs
-			else:
-				preds = np.concatenate((preds, outputs), axis=0)
-			if labels_acc is None:
-				labels_acc = labels
-			else:
-				labels_acc = np.concatenate((labels_acc, labels), axis=0)
-
-	preds = preds.reshape(-1, 64, 128, 2)
-	preds = preds.transpose(0, 3, 1, 2)
-	labels_acc = labels_acc.reshape(-1, 64, 128, 2)
-	labels_acc = labels_acc.transpose(0, 3, 1, 2)
-	preds = preds*np.array(dg.std.values).reshape((1,2,1,1)) + np.array(dg.mean.values).reshape((1,2,1,1))
-	labels_acc = labels_acc*np.array(dg.std.values).reshape((1,2,1,1)) + np.array(dg.mean.values).reshape((1,2,1,1))
-	# pdb.set_trace()
-	labels = valid.load().sel(time=dg.valid_time)
-	lat = np.reshape(labels.lat.values, (1, -1, 1))
-	weights_lat = np.cos(np.deg2rad(lat))
-	weights_lat /= weights_lat.mean()
-	lev_idx = 0
-	rmse_dict = {}
-	for var, levels in dg.var_dict.items():
-		preds_var = preds[:, lev_idx]
-		# add for labels_var (idx = lev_idx)
-		# labels_var = np.reshape(labels_acc[:, :, lev_idx], (-1, 64, 128))
-		labels_var = labels_acc[:, lev_idx]
-		# labels_var = getattr(labels, var).values
-		lev_idx += 1
-		error = preds_var - labels_var
-		import pdb;pdb.set_trace()
-		rmse = np.sqrt(((error)**2 * weights_lat).mean())
-		rmse_dict[var] = rmse
-	return rmse_dict
 
 def process_data(data, device):
 	inputs, labels = data
